@@ -133,6 +133,59 @@ func TestDelete(t *testing.T) {
 	testRaw(t, setDelete, `{"1":"2"}`, `{"1":"2"}`, `3`, nil)
 }
 
+func TestDeleteNegativeOne(t *testing.T) {
+	cases := []struct {
+		name   string
+		json   string
+		path   string
+		expect string
+	}{
+		{"object", `{"#":1,"0":"keep","-1":"remove"}`, "-1", `{"#":1,"0":"keep"}`},
+		{"object without index", `{"#":1,"-1":"remove"}`, "-1", `{"#":1}`},
+		{"object without target", `{"#":1,"0":"keep"}`, "-1", `{"#":1,"0":"keep"}`},
+		{"object string count", `{"#":"2","1":"keep","-1":"remove"}`, "-1", `{"#":"2","1":"keep"}`},
+		{"nested object", `{"a":{"#":1,"0":"keep","-1":"remove"}}`, "a.-1", `{"a":{"#":1,"0":"keep"}}`},
+		{"object in array", `[{"#":1,"0":"keep","-1":"remove"}]`, "0.-1", `[{"#":1,"0":"keep"}]`},
+		{"forced object member", `{"#":1,"0":"keep","-1":"remove"}`, ":-1", `{"#":1,"0":"keep"}`},
+		{"array", `[123,456]`, "-1", `[123]`},
+		{"nested array", `{"a":[123,456]}`, "a.-1", `{"a":[123]}`},
+		{"empty array", `[]`, "-1", `[]`},
+	}
+	methods := []struct {
+		name string
+		del  func(string, string) (string, error)
+	}{
+		{"Delete", Delete},
+		{"DeleteOptions", func(json, path string) (string, error) {
+			return DeleteOptions(json, path, &Options{Optimistic: true})
+		}},
+		{"DeleteBytes", func(json, path string) (string, error) {
+			res, err := DeleteBytes([]byte(json), path)
+			return string(res), err
+		}},
+		{"DeleteBytesOptions", func(json, path string) (string, error) {
+			res, err := DeleteBytesOptions([]byte(json), path,
+				&Options{Optimistic: true, ReplaceInPlace: true})
+			return string(res), err
+		}},
+	}
+	for _, method := range methods {
+		t.Run(method.name, func(t *testing.T) {
+			for _, tc := range cases {
+				t.Run(tc.name, func(t *testing.T) {
+					res, err := method.del(tc.json, tc.path)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if res != tc.expect {
+						t.Fatalf("expected '%v', got '%v'", tc.expect, res)
+					}
+				})
+			}
+		})
+	}
+}
+
 // TestRandomData is a fuzzing test that throws random data at SetRaw
 // function looking for panics.
 func TestRandomData(t *testing.T) {
